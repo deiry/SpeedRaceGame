@@ -1,128 +1,102 @@
 ''' This script detects a object of specified object colour from the webcam video feed.
 Using OpenCV library for vision tasks and HSV color space for detecting object of given specific color.'''
 
-# Import necessary modules
-# from speed_racer import gameLoop
-import asyncio
+#Importa modulos necesarios
 import cv2
 import imutils
 import numpy as np
 import pyautogui
 from collections import deque
 import time
+import math
+
+#Definr color HSV del rango de color de objetos verdes
+greenLower = (29, 86, 6)
+greenUpper = (64, 255, 255)
+up_frame = cv2.imread('.imgs/fondo1.png')
+down_frame = cv2.imread('.imgs/up.png')
+#Usar en una estructura cola para almancenar los puntos en buffer
+buffer = 20
 
 
-class Movement:
+pts = deque(maxlen = buffer)
 
-    def main(self):
-        # Define HSV colour range for green colour objects
-        self.greenLower = (29, 86, 6)
-        self.greenUpper = (64, 255, 255)
-        self.up_frame = self.load_image('imgs/fondo1.png')
-        self.down_frame = self.load_image('imgs/up.png')
-        # Used in deque structure to store no. of given self.buffer points
-        self.buffer = 20
+#Inicia video
+video_capture = cv2.VideoCapture(0)
 
-        # Points deque structure storing 'self.buffer' no. of object coordinates
-        self.pts = deque(maxlen=self.buffer)
-        self.video_capture = cv2.VideoCapture(0)
-        time.sleep(2)
-        # loop = asyncio.get_event_loop()
-        # task1 = loop.create_task(self.video_camera())
-        self.video_camera()
+#Dormir por dos segundos la captura
+time.sleep(2)
 
-        # Start video capture
+#Ciclo OpenCV
+while True:
+    #Almancenar el frame leido
+    ret, frame = video_capture.read()
+    #Flip the frame para evitar el efecto de espejo
+    frame = cv2.flip(frame,1)
+    #Cmabio de tamaño a 600x600
+    frame = imutils.resize(frame, width = 500)
+    #Aplicar filtro gaussian bllur de tamaño 5, remover el exceso de ruido
+    blurred_frame = cv2.GaussianBlur(frame, (5,5), 0)
+    
+    #Convertir frame rgb a hsv
+    hsv_converted_frame = cv2.cvtColor(blurred_frame, cv2.COLOR_BGR2HSV)
 
-    def video_camera(self):
-        while True:
-            # Store the readed frame in frame, ret defines return value
-            ret, frame = self.video_capture.read()
-            # Flip the frame to avoid mirroring effect
-            frame = cv2.flip(frame, 1)
-            # Resize the given frame to a 600*600 window
-            frame = imutils.resize(frame, width=500)
+    #Crear máscara para el grame, mostrando valores verdes
+    mask = cv2.inRange(hsv_converted_frame, greenLower, greenUpper)
+    #Erosionar la salida para eliminar los pequeños puntos blancos presentes en la imagen enmascarada
+    mask = cv2.erode(mask, None, iterations = 2)
+    #Dilara la imagen resultante para guardar como nuestro nuevo objetivo
+    mask = cv2.dilate(mask, None, iterations = 2)
 
-            hsv_converted_frame = self.filter_techniques(frame)
-           
-            # Create a mask for the frame, showing green values
-            mask = cv2.inRange(hsv_converted_frame, self.greenLower, self.greenUpper)
-            # Erode the masked output to delete small white dots present in the masked image
-            mask = cv2.erode(mask, None, iterations=2)
-            # Dilate the resultant image to restore our target
-            mask = cv2.dilate(mask, None, iterations=2)
+    cv2.imshow('Masked Output', mask)
 
-            # Display the masked output in a different window
-            cv2.imshow('Masked Output', mask)
+    #Encuentra todos los contornos en la imagen de mascara
+    cnts,_ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            # Find all contours in the masked image
-            cnts, _ = cv2.findContours(
-                mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    center = None
 
-            # Define center of the ball to be detected as None
-            center = None
 
-            # If any object is detected, then only proceed
-            if(len(cnts)) > 0:
-                # Find the contour with maximum area
-                c = max(cnts, key=cv2.contourArea)
-                # Find the center of the circle, and its radius of the largest detected contour.
-                ((x, y), radius) = cv2.minEnclosingCircle(c)
+    if(len(cnts)) > 0:
+        #Find the contour with maximum area
+        c = max(cnts, key = cv2.contourArea)
+        #Encuentra el centro del circulo y su radio de la detección mas grande del contorno
+        ((x,y), radius) = cv2.minEnclosingCircle(c)
 
-                self.centroid_calculate(c)
-
-                if x > 210 and y < 276:
-                    pyautogui.press("right")
-                if x < 300 and y < 276:
-                    pyautogui.press("left")
-                if y > 277:
-                    pyautogui.press("enter")
-                # Proceed only if a ball of considerable size is detected
-                if radius > 10:
-                    # Draw circles around the object as well as its centre
-                    cv2.circle(frame, (int(x), int(y)),
-                               int(radius), (0, 255, 255), 2)
-                    cv2.circle(frame, center, 5, (0, 255, 255), -1)
-
-                # Append the detected object in the frame to self.pts deque structure
-                self.pts.appendleft(center)
-
-            # Show the output frame
-            alpha = 0.5
-            added_image = cv2.addWeighted(frame[0:370, 0:500, :], alpha, self.up_frame[0:370, 0:500, :], 1-alpha, 0)
-            frame[0:370, 0:500] = added_image
-
-            cv2.imshow('Frame', frame)
-            key = cv2.waitKey(1) & 0xFF
-
-            # If q is pressed, close the window
-            if(key == ord('q')):
-                self.quit()
-
-    def centroid_calculate(self, c):
-        # Calculate the centroid of the ball, as we need to draw a circle around it.
+        #Calcular el centroido alrededor de la bola para dibujarlo
         M = cv2.moments(c)
         center = (int(M['m10'] / M['m00']), int(M['m01'] / M['m00']))
-        return center
+        print("x: " + str(x))
+        print("y: " + str(y))
+        print("radius: " + str(radius))
+        if x>210 and y<276:
+            pyautogui.press("right")
+        if x<300 and y <276:
+            pyautogui.press("left")
+        if y>277:
+            pyautogui.press("enter")
+
+        if radius > 10:
+            #Dibujar los circulos alrededor del objeto 
+            cv2.circle(frame, (int(x), int(y)), int(radius), (0,255,255), 2)
+            cv2.circle(frame, center, 5, (0,255,255), -1)
+
+        #Concatena los centroides
+        pts.appendleft(center)
 
 
-    def load_image(self, image_url):
-        return cv2.imread(image_url)
+
+    alpha = 0.5
+    foreground = np.ones((100,100,3),dtype='uint8')*255
+    added_image = cv2.addWeighted(frame[0:370,0:500,:],alpha,up_frame[0:370,0:500,:],1-alpha,0)
+    frame[0:370,0:500] = added_image
 
 
-    def filter_techniques(self,frame):
-        # Blur the frame using Gaussian Filter of kernel size 5, to remove excessivve noise
-        blurred_frame = cv2.GaussianBlur(frame, (5, 5), 0)
-        # Convert the frame to HSV, as HSV allow better segmentation.
-        hsv_converted_frame = cv2.cvtColor(
-            blurred_frame, cv2.COLOR_BGR2HSV)
-        return hsv_converted_frame
+    cv2.imshow('Frame', frame)
+    key = cv2.waitKey(1) & 0xFF
 
+    #Si presiona q se termina la ejecución
+    if(key == ord('q')):
+        break
 
-    def quit(self):
-        self.video_capture.release()
-        cv2.destroyAllWindows()
-
-if __name__ == '__main__':
-    movement = Movement()
-    movement.main()
-
+video_capture.release()
+cv2.destroyAllWindows()
