@@ -1,0 +1,6 @@
+# Requerimientos para Speed racer camera
+
+Pygame == 1.9.6
+opencv-python == 4.4.0.44
+imutils == 0.5.3
+PyAutoGUI == 0.9.52
